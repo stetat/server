@@ -6,6 +6,8 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import static java.util.Map.entry;
 
@@ -39,9 +41,11 @@ public class EchoServer {
     public static void main(String[] args) throws IOException {
 
         try(ServerSocket server = new ServerSocket(8080)) {
+            ExecutorService pool = Executors.newFixedThreadPool(200);
+
             while(true) {
                 Socket socket = server.accept();
-                new Thread(() -> {
+                pool.submit(() -> {
                     try(socket) {
                         BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                         PrintWriter writer = new PrintWriter(socket.getOutputStream(), true);
@@ -76,13 +80,13 @@ public class EchoServer {
                         String response = successCodes.contains(status) ? pathResponses.get(path) : "no content";
 
                         if (path.equals("/slow")) {
-                            Thread.sleep(1000 * 10);
+                            Thread.sleep(1000 * 2);
                         }
                         sendResponse(writer, status, statusText, response);
                     } catch (Exception e) {
                         System.out.println("Request failed: " + e);
                     }
-                }).start();
+                });
             }
         }
     }
