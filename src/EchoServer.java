@@ -1,10 +1,11 @@
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -15,13 +16,15 @@ public class EchoServer {
     static Map<String, String> pathResponses = Map.ofEntries(
             entry("/", "Hello world!"),
             entry("/hello", "hey!"),
-            entry("/slow", "this takes 10s!")
+            entry("/slow", "this takes 10s!"),
+            entry("/echo", "")
     );
 
     static Map<String, String[]> allowedMethods = Map.ofEntries(
             entry("/", new String[]{"GET"}),
             entry("/hello", new String[]{"GET", "POST"}),
-            entry("/slow", new String[]{"GET"})
+            entry("/slow", new String[]{"GET"}),
+            entry("/echo", new String[]{"POST"})
     );
 
     static Map<String, Integer> statusCodes = Map.ofEntries(
@@ -48,11 +51,13 @@ public class EchoServer {
                 pool.submit(() -> {
                     try(socket) {
                         BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                        PrintWriter writer = new PrintWriter(socket.getOutputStream(), true);
+                        OutputStream out = socket.getOutputStream();
+
                         String line;
                         boolean close = false;
 
                         while(true) {
+                            socket.setSoTimeout(1000 * 5);
                             System.out.println("Reading request: ");
                             String requestLine = reader.readLine();
                             if(requestLine == null) {
@@ -64,6 +69,7 @@ public class EchoServer {
                             String version = request[2];
                             System.out.println("Method: " + method + "\n" + "Path: " + path + "\n" + "Version: " + version + "\n");
 
+                            int contentLength = 0;
                             System.out.println("Reading headers: ");
                             while ((line = reader.readLine()) != null) {
                                 if (line.isEmpty()) {
@@ -71,10 +77,24 @@ public class EchoServer {
                                 }
                                 if(line.equals("Connection: close")) {
                                     close = true;
+                                } else if(line.startsWith("Content-Length")) {
+                                    String[] contentLengthLine= line.split(" ");
+                                    contentLength = Integer.parseInt(contentLengthLine[1]);
                                 }
 
                                 System.out.println(line);
                             }
+
+                            char[] charBody = new char[contentLength];
+                            int count = 0;
+                            System.out.println("Reading body");
+                            while(count < contentLength) {
+                                int n = reader.read(charBody, count, contentLength - count);
+                                if(n == -1) break;
+                                count += n;
+                            }
+                            String body = new String(charBody);
+                            System.out.println(body);
 
                             int status;
                             if (pathResponses.containsKey(path) && Arrays.asList(allowedMethods.get(path)).contains(method)) {
@@ -85,17 +105,40 @@ public class EchoServer {
                                 status = 404;
                             }
 
-                            String statusText = statusTexts.get(status);
-                            String response = successCodes.contains(status) ? pathResponses.get(path) : "no content";
 
-                            if (path.equals("/slow")) {
-                                Thread.sleep(1000 * 2);
+                            Path resourcePath = null;
+                            byte[] responseBytes = null;
+                            if(path.contains(".")) {
+                                status = 200;
+                                String resource = "www" + path;
+                                resourcePath = Paths.get(resource);
+                                if(!(Files.exists(resourcePath) && Files.isRegularFile(resourcePath))) {
+                                    status = 404;
+                                    responseBytes = "Not Found".getBytes(StandardCharsets.UTF_8);
+                                } else {
+                                    responseBytes = Files.readAllBytes(resourcePath);
+                                }
                             }
-                            sendResponse(writer, status, statusText, response, close);
+
+                            if(responseBytes == null) {
+                                String response = successCodes.contains(status) ? pathResponses.get(path) : "no content";
+                                responseBytes = response.getBytes(StandardCharsets.UTF_8);
+
+                                if (path.equals("/slow")) {
+                                    Thread.sleep(1000 * 2);
+                                } else if (path.equals("/echo")) {
+                                    responseBytes = body.getBytes(StandardCharsets.UTF_8);
+                                }
+                            }
+                            String statusText = statusTexts.get(status);
+
+                            sendResponse(out, status, statusText, close, responseBytes);
                             if(close) {
                                 break;
                             }
                         }
+                    } catch (SocketTimeoutException e) {
+                        System.out.println("Idle timeout - closing connection");
                     } catch (Exception e) {
                         System.out.println("Request failed: " + e);
                     }
@@ -108,20 +151,18 @@ public class EchoServer {
         return body.getBytes(StandardCharsets.UTF_8).length;
     }
 
-    public static void sendResponse(PrintWriter writer, int status, String statusText, String body, boolean close) {
-
-        String responseBody = body + "\r\n";
+    public static void sendResponse(OutputStream out, int status, String statusText, boolean close, byte[] bodyBytes) throws IOException {
 
         System.out.print("\nReturning response: ");
-        writer.print("HTTP/1.1 " + status + " " + statusText + "\r\n");
-        if(close) {
-            writer.print("Connection: close\r\n");
-        }
-        writer.print("Content-Type: text/plain\r\n");
-        writer.print("Content-Length: " + getContentLength(responseBody) + "\r\n");
-        writer.print("\r\n");
-        writer.print(responseBody);
-        writer.flush();
+
+        String headers = "HTTP/1.1 " + status + " " + statusText + "\r\n";
+        if(close) headers += "Connection: close\r\n";
+        headers += "Content-Type: text/plain\r\n" +
+                   "Content-Length: " + bodyBytes.length + "\r\n" + "\r\n";
+
+        out.write(headers.getBytes(StandardCharsets.UTF_8));
+        out.write(bodyBytes);
+        out.flush();
 
     }
 }
