@@ -36,10 +36,24 @@ public class EchoServer {
             entry(200, "OK"),
             entry(201, "CREATED"),
             entry(405, "Method Not Allowed"),
-            entry(404, "Not Found")
+            entry(404, "Not Found"),
+            entry(403, "Forbidden")
+    );
+
+    static Map<String, String> contentTypes = Map.ofEntries(
+            entry("html", "text/html"),
+            entry("css", "text/css"),
+            entry("js", "application/javascript"),
+            entry("png", "image/png"),
+            entry("jpg", "image/jpeg"),
+            entry("gif", "image/gif"),
+            entry("txt", "text/plain"),
+            entry("json", "application/json")
     );
 
     static List<Integer> successCodes = Arrays.asList(200, 201);
+
+    static final Path WEB_ROOT = Paths.get("www").toAbsolutePath().normalize();
 
     public static void main(String[] args) throws IOException {
 
@@ -107,12 +121,17 @@ public class EchoServer {
 
 
                             Path resourcePath = null;
+                            String contentType = "";
                             byte[] responseBytes = null;
                             if(path.contains(".")) {
                                 status = 200;
-                                String resource = "www" + path;
-                                resourcePath = Paths.get(resource);
-                                if(!(Files.exists(resourcePath) && Files.isRegularFile(resourcePath))) {
+                                contentType = contentTypes.getOrDefault(path.substring(path.lastIndexOf(".") + 1), "application/octet-stream");
+                                resourcePath = WEB_ROOT.resolve(path.substring(1)).normalize();
+
+                                if(!resourcePath.startsWith(WEB_ROOT)) {
+                                    status = 403;
+                                    responseBytes = "Forbidden".getBytes(StandardCharsets.UTF_8);
+                                } else if(!(Files.exists(resourcePath) && Files.isRegularFile(resourcePath))) {
                                     status = 404;
                                     responseBytes = "Not Found".getBytes(StandardCharsets.UTF_8);
                                 } else {
@@ -132,7 +151,7 @@ public class EchoServer {
                             }
                             String statusText = statusTexts.get(status);
 
-                            sendResponse(out, status, statusText, close, responseBytes);
+                            sendResponse(out, contentType, status, statusText, close, responseBytes);
                             if(close) {
                                 break;
                             }
@@ -151,13 +170,13 @@ public class EchoServer {
         return body.getBytes(StandardCharsets.UTF_8).length;
     }
 
-    public static void sendResponse(OutputStream out, int status, String statusText, boolean close, byte[] bodyBytes) throws IOException {
+    public static void sendResponse(OutputStream out, String contentType, int status, String statusText, boolean close, byte[] bodyBytes) throws IOException {
 
         System.out.print("\nReturning response: ");
 
         String headers = "HTTP/1.1 " + status + " " + statusText + "\r\n";
         if(close) headers += "Connection: close\r\n";
-        headers += "Content-Type: text/plain\r\n" +
+        headers += "Content-Type: " + contentType + "\r\n" +
                    "Content-Length: " + bodyBytes.length + "\r\n" + "\r\n";
 
         out.write(headers.getBytes(StandardCharsets.UTF_8));
