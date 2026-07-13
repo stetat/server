@@ -5,7 +5,7 @@ no Netty, no external libraries)** to understand what web frameworks hide: socke
 loop, blocking vs non-blocking I/O, the thread-per-connection model and its C10K ceiling, the
 reactor pattern, and virtual threads (Project Loom).
 
-The server is implemented **three ways** — a bounded thread pool, virtual threads, and a
+The server is implemented **three ways** - a bounded thread pool, virtual threads, and a
 single-threaded NIO event loop — and benchmarked head to head.
 
 ## What it does
@@ -46,7 +46,7 @@ connection. Every design below is a way around this wall.
 
 For fast requests all three are competent — the event loop keeps pace on a single thread.
 
-### Slow-client concurrency — 2,000 simultaneous slow requests
+### Slow-client concurrency - 2,000 simultaneous slow requests
 
 | Architecture        | Wall time | Why                                                        |
 |---------------------|-----------|------------------------------------------------------------|
@@ -97,5 +97,5 @@ python3 tests/load.py
 - HTTP framing: why `Content-Length` must match the body byte count exactly, and why you can't `readLine()` a body.
 - Keep-alive, and why idle read timeouts are a security requirement (Slowloris).
 - Path traversal (CWE-22): validate the *resolved destination*, don't sanitize the *input spelling*.
-- The reactor pattern from the inside — partial reads/writes, and scheduling instead of sleeping.
+- The reactor pattern from the inside - partial reads/writes, and scheduling instead of sleeping.
 - Virtual threads vs event loops: the same scalability, one with simple code and one without.
