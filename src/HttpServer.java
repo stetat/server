@@ -12,7 +12,7 @@ import java.util.concurrent.Executors;
 
 import static java.util.Map.entry;
 
-public class EchoServer {
+public class HttpServer {
     static Map<String, String> pathResponses = Map.ofEntries(
             entry("/", "Hello world!"),
             entry("/hello", "hey!"),

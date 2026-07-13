@@ -159,7 +159,7 @@ Each phase unlocks one core concept. Don't skip ahead.
   the whole server — fix with per-connection try/catch in Phase 4.
 
 ### Phase 1 — DONE
-- **Built:** `src/EchoServer.java` — `ServerSocket` on 8080, `while(true)` accept loop,
+- **Built:** `src/HttpServer.java` — `ServerSocket` on 8080, `while(true)` accept loop,
   per-client `try`-with-resources `Socket`, `BufferedReader`/`PrintWriter`, echo loop using
   `while ((line = reader.readLine()) != null)`.
 - **Understood:** why `accept()` blocks (OS suspends the process, zero CPU), the read/echo loop,
@@ -171,7 +171,7 @@ Each phase unlocks one core concept. Don't skip ahead.
 
 _Update this at the end of each session so the next one has context._
 
-- **2026-07-08 — Phase 1 done.** Built the echo server (`src/EchoServer.java`): accept loop,
+- **2026-07-08 — Phase 1 done.** Built the echo server (`src/HttpServer.java`): accept loop,
   per-client socket, read/echo with `readLine()`. Student is "learning Java too," so mechanics
   get explained slowly. Moved on to Phase 2 (speak HTTP) same session.
 - **2026-07-08 — Phase 2 started.** Parse the HTTP request line + headers by hand; send a valid
@@ -200,7 +200,24 @@ _Update this at the end of each session so the next one has context._
   before existence. Discussed resume framing (project already strong; Phase 7 benchmark is the
   differentiator). Now on Phase 7 finale: virtual threads first (easy win past the 2020 wall), then
   the NIO event loop, then benchmark all three. NOTE: pre-Phase-7 cleanup still pending (class still
-  named EchoServer, debug System.out noise, route data in 5 maps) — do before showcasing.
+  named HttpServer, debug System.out noise, route data in 5 maps) — do before showcasing.
+- **2026-07-13 — All THREE architectures built.** (b) Virtual threads: one-line swap to
+  `newVirtualThreadPerTaskExecutor()`, verified 8000 concurrent /slow, 0 fail, 4.9s (past the 2020
+  wall). (a) NIO event loop (`src/NioServer.java`): Selector + non-blocking channels + per-connection
+  StringBuilder accumulator for partial reads + OP_WRITE drain for partial writes — verified 4000
+  conns on ONE thread (0.9s, 0 fail) and a forced 10MB response drained intact. Explained virtual
+  thread internals (carrier threads, park/unmount, continuations on heap, kqueue underneath) and
+  ephemeral-port cap (4-tuple, ~16k range, TIME_WAIT). REMAINING: three-way benchmark writeup +
+  README (with numbers), pre-showcase cleanup, optional Phase 8 framework.
+- **2026-07-13 — Benchmark DONE + README written.** Added scheduled-timer `/slow` to NioServer
+  (two-phase loop: handle ready keys, then fire due timers — verified /hello instant during /slow,
+  5 concurrent /slow finish together in 3s). Ran three-way benchmark (scratchpad copies, logging
+  stripped for fairness): FAST 8000 conc — pool 1.41s / VT 1.28s / NIO 1.68s(1 thread), all 0 fail.
+  SLOW 2000 conc — pool 30.2s (head-of-line) / VT 3.4s / NIO 3.3s (~9x). Wrote `README.md` (root)
+  with tables + story. NOTE for benchmark: debug System.out logging tanks throughput (NIO 8s→1.7s
+  when stripped) — real files still have the logging. REMAINING: cleanup (strip/flag debug logging,
+  rename HttpServer, consolidate 5 route maps), optional Phase 8 framework. Numbers are
+  machine-specific (Apple Silicon, JDK 21) — re-measure if run elsewhere.
 
 <!--
 Template for future entries:
