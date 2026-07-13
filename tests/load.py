@@ -3,7 +3,8 @@ import asyncio
 opened = 0      # connections successfully established
 done = 0        # connections that got a response back
 failed = 0      # connections that errored (refused, too many files, etc.)
-
+repeating = 0
+prev_stats = ()
 async def hit(i):
     global opened, done, failed
     try:
@@ -19,16 +20,40 @@ async def hit(i):
         if failed <= 5:                       # don't spam: only show the first few
             print("client fail:", i, e)
 
+
+
+
+
 async def reporter():
+    global repeating, prev_stats
     """Print a live tally every second so the run isn't a silent black box."""
     while True:
         await asyncio.sleep(1)
         print(f"opened={opened}  done={done}  failed={failed}")
 
+        if (opened, done, failed) == prev_stats:
+            repeating += 1
+        else:
+            repeating = 0
+
+        if repeating >= 3:
+            print("plateaue detected - cancelling outstanding connections")
+            work.cancel()
+            break
+
+        prev_stats = (opened, done, failed)
+
 async def main(n):
     rep = asyncio.create_task(reporter())     # background progress printer
-    await asyncio.gather(*(hit(i) for i in range(n)))
-    rep.cancel()                              # stop the reporter once all connections finish
+    work = asyncio.gather(*(hit(i) for i in range(n)))
+
+    try:
+        await work
+    except asyncio.CancelledError:
+        print("aborted: server plateaued")
+    finally:
+        rep.cancel()
+                               # stop the reporter once all connections finish
     print(f"FINAL: opened={opened}  done={done}  failed={failed}")
 
-asyncio.run(main(7000))
+asyncio.run(main(100000))

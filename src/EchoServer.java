@@ -58,7 +58,7 @@ public class EchoServer {
     public static void main(String[] args) throws IOException {
 
         try(ServerSocket server = new ServerSocket(8080)) {
-            ExecutorService pool = Executors.newFixedThreadPool(200);
+            ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
 
             while(true) {
                 Socket socket = server.accept();
@@ -144,7 +144,7 @@ public class EchoServer {
                                 responseBytes = response.getBytes(StandardCharsets.UTF_8);
 
                                 if (path.equals("/slow")) {
-                                    Thread.sleep(1000 * 2);
+                                    Thread.sleep(1000 * 3);
                                 } else if (path.equals("/echo")) {
                                     responseBytes = body.getBytes(StandardCharsets.UTF_8);
                                 }
