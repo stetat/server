@@ -13,56 +13,23 @@ import java.util.concurrent.Executors;
 import static java.util.Map.entry;
 
 public class HttpServer {
-    static Map<String, String> pathResponses = Map.ofEntries(
-            entry("/", "Hello world!"),
-            entry("/hello", "hey!"),
-            entry("/slow", "this takes 10s!"),
-            entry("/echo", "")
-    );
-
-    static Map<String, String[]> allowedMethods = Map.ofEntries(
-            entry("/", new String[]{"GET"}),
-            entry("/hello", new String[]{"GET", "POST"}),
-            entry("/slow", new String[]{"GET"}),
-            entry("/echo", new String[]{"POST"})
-    );
-
-    static Map<String, Integer> statusCodes = Map.ofEntries(
-            entry("GET", 200),
-            entry("POST", 201)
-    );
-
-    static Map<Integer, String> statusTexts = Map.ofEntries(
-            entry(200, "OK"),
-            entry(201, "CREATED"),
-            entry(405, "Method Not Allowed"),
-            entry(404, "Not Found"),
-            entry(403, "Forbidden")
-    );
-
-    static Map<String, String> contentTypes = Map.ofEntries(
-            entry("html", "text/html"),
-            entry("css", "text/css"),
-            entry("js", "application/javascript"),
-            entry("png", "image/png"),
-            entry("jpg", "image/jpeg"),
-            entry("gif", "image/gif"),
-            entry("txt", "text/plain"),
-            entry("json", "application/json")
-    );
-
-    static List<Integer> successCodes = Arrays.asList(200, 201);
-
-    static final Path WEB_ROOT = Paths.get("www").toAbsolutePath().normalize();
+    static final Path WEB_ROOT = Mappings.getWebRoot();
 
     public static void main(String[] args) throws IOException {
 
+        // initiating server to listen on port 8080
         try(ServerSocket server = new ServerSocket(8080)) {
+            // creating executor that spawns a new virtual thread for every task
             ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
 
+            // a loop so server won't stop after 1 closed connection
             while(true) {
+                // wait for a new connection
                 Socket socket = server.accept();
+
+                // submit a runnable to the thread pool
                 pool.submit(() -> {
+                    // try/catch for socket so server won't break after 1 failed request
                     try(socket) {
                         BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                         OutputStream out = socket.getOutputStream();
@@ -70,6 +37,8 @@ public class HttpServer {
                         String line;
                         boolean close = false;
 
+                        // a while loop so connection won't close after 1 request
+                        // read entire request
                         while(true) {
                             socket.setSoTimeout(1000 * 5);
                             System.out.println("Reading request: ");
@@ -77,12 +46,15 @@ public class HttpServer {
                             if(requestLine == null) {
                                 break;
                             }
+
+                            // parsing request data
                             String[] request = requestLine.split(" ");
                             String method = request[0];
                             String path = request[1];
                             String version = request[2];
                             System.out.println("Method: " + method + "\n" + "Path: " + path + "\n" + "Version: " + version + "\n");
 
+                            // reading headers
                             int contentLength = 0;
                             System.out.println("Reading headers: ");
                             while ((line = reader.readLine()) != null) {
@@ -99,6 +71,7 @@ public class HttpServer {
                                 System.out.println(line);
                             }
 
+                            // reading body
                             char[] charBody = new char[contentLength];
                             int count = 0;
                             System.out.println("Reading body");
@@ -110,10 +83,11 @@ public class HttpServer {
                             String body = new String(charBody);
                             System.out.println(body);
 
+                            // checking if it's a valid path
                             int status;
-                            if (pathResponses.containsKey(path) && Arrays.asList(allowedMethods.get(path)).contains(method)) {
-                                status = statusCodes.get(method);
-                            } else if (pathResponses.containsKey(path)) {
+                            if (Mappings.isValidPath(path) && Mappings.isAllowedMethod(path, method)) {
+                                status = Mappings.getStatusCode(method);
+                            } else if (Mappings.isValidPath(path)) {
                                 status = 405;
                             } else {
                                 status = 404;
@@ -123,11 +97,14 @@ public class HttpServer {
                             Path resourcePath = null;
                             String contentType = "";
                             byte[] responseBytes = null;
+
+                            // checking if request wants file
                             if(path.contains(".")) {
                                 status = 200;
-                                contentType = contentTypes.getOrDefault(path.substring(path.lastIndexOf(".") + 1), "application/octet-stream");
-                                resourcePath = WEB_ROOT.resolve(path.substring(1)).normalize();
+                                contentType = Mappings.getContentType(path.substring(path.lastIndexOf(".") + 1));
 
+                                // protection from path traversal
+                                resourcePath = WEB_ROOT.resolve(path.substring(1)).normalize();
                                 if(!resourcePath.startsWith(WEB_ROOT)) {
                                     status = 403;
                                     responseBytes = "Forbidden".getBytes(StandardCharsets.UTF_8);
@@ -139,8 +116,9 @@ public class HttpServer {
                                 }
                             }
 
+                            // if not a file, preparing default response
                             if(responseBytes == null) {
-                                String response = successCodes.contains(status) ? pathResponses.get(path) : "no content";
+                                String response = Mappings.isSuccessCode(status) ? Mappings.getPathResponse(path) : "no content";
                                 responseBytes = response.getBytes(StandardCharsets.UTF_8);
 
                                 if (path.equals("/slow")) {
@@ -149,7 +127,7 @@ public class HttpServer {
                                     responseBytes = body.getBytes(StandardCharsets.UTF_8);
                                 }
                             }
-                            String statusText = statusTexts.get(status);
+                            String statusText = Mappings.getStatusText(status);
 
                             sendResponse(out, contentType, status, statusText, close, responseBytes);
                             if(close) {
@@ -166,10 +144,7 @@ public class HttpServer {
         }
     }
 
-    public static int getContentLength(String body) {
-        return body.getBytes(StandardCharsets.UTF_8).length;
-    }
-
+    // writing response back to output stream
     public static void sendResponse(OutputStream out, String contentType, int status, String statusText, boolean close, byte[] bodyBytes) throws IOException {
 
         System.out.print("\nReturning response: ");

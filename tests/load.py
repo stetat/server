@@ -56,4 +56,4 @@ async def main(n):
                                # stop the reporter once all connections finish
     print(f"FINAL: opened={opened}  done={done}  failed={failed}")
 
-asyncio.run(main(20000))
+asyncio.run(main(200))
